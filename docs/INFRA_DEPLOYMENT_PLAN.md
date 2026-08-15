@@ -215,11 +215,17 @@ infra/
 └── deploy.sh                 # up | down
 ```
 
-- `infra/deploy.sh up` → `az deployment group create --resource-group
-  rg-redwood-azure-dev --template-file infra/bicep/main.bicep --parameters
-  infra/bicep/params/dev.bicepparam`. A `phase` parameter (or per-phase
-  Bicep `module` toggle) controls which phases' modules are included, so a
-  phase can be added without re-running everything blind.
+- `infra/deploy.sh up` → `az deployment sub create --location eastus2
+  --template-file infra/bicep/main.bicep --parameters
+  infra/bicep/params/dev.bicepparam`. **Corrected from an earlier
+  resource-group-scope sketch** (`az deployment group create --resource-group
+  rg-redwood-azure-dev ...`) — that command requires the target resource
+  group to already exist, which is circular for Phase 0.1 ("create the
+  resource group"). `main.bicep` now has `targetScope = 'subscription'`,
+  creates the resource group itself, and scopes every module into it —
+  see its header comment. A per-phase Bicep `module` toggle (`deploy_phase_0`,
+  implemented; later phases add their own) controls which phases' modules
+  are included, so a phase can be added without re-running everything blind.
 - `infra/deploy.sh down` → `az group delete --name rg-redwood-azure-dev
   --yes`. Correct specifically because §2 keeps everything in one resource
   group — no per-resource teardown ordering to encode. Always run with
@@ -258,7 +264,12 @@ infra/
 1. Review this plan (this document).
 2. On approval, implement **Phase 0 only** — resource group, Key Vault,
    managed identity — and validate `infra/deploy.sh up` / `down` end to end
-   before writing a single module beyond it.
+   before writing a single module beyond it. **Code written 2026-08-15**
+   (`infra/bicep/main.bicep`, `modules/key_vault.bicep`,
+   `modules/managed_identity.bicep`, `params/dev.bicepparam`,
+   `infra/deploy.sh`) and compiles cleanly (`az bicep build`). **Not yet
+   run against a live subscription** — `infra/deploy.sh up`/`down` end-to-end
+   validation is still outstanding; do that before starting Phase 1.
 3. Add Phase 1 (Foundry account + model deployments, Foundry project, Azure
    AI Search, RBAC — 1.1–1.4) and re-point Phase 1's provisioning steps in
    `PHASE_1_POLICY_QA_AGENT.md` at `infra/deploy.sh up` instead of the
