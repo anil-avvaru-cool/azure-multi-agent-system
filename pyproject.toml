@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "azure-multi-agent-system"
+version = "0.1.0"
+description = "Redwood AI Insurance — Azure substrate agent services, built on Microsoft Agent Framework + Azure AI Foundry Agent Service"
+requires-python = ">=3.11"
+dependencies = [
+    "agent-framework-core",
+    "agent-framework-foundry",
+    "agent-framework-foundry-hosting",
+    "agent-framework-azure-ai-search",
+    "azure-search-documents>=11.6.0b1",
+    "azure-identity>=1.19.0",
+    "openai>=1.55.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.uv]
+prerelease = "allow"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "agents",
+    "search",
+    "config",
+]
