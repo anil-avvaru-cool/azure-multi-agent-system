@@ -45,10 +45,44 @@ case "$1" in
     echo "This provisions real, billable Azure resources."
     read -r -p "Continue? [y/N] " confirm
     [[ "${confirm}" == "y" || "${confirm}" == "Y" ]] || { echo "Aborted."; exit 1; }
+
+    # Two-stage Phase 1 deploy: the Foundry account's system-assigned
+    # identity provisions correctly, but the Cognitive Services RP takes a
+    # few seconds to internally propagate it before project-creation
+    # validation sees it — an undocumented async lag with no readiness
+    # attribute to poll (confirmed live: identity.principalId was already
+    # populated when the race still hit). So stage 1 deploys everything
+    # except the Foundry project, then stage 2 retries the actual project
+    # creation until it succeeds, rather than sleeping a guessed duration.
+    # See docs/INFRA_DEPLOYMENT_PLAN.md §6.
+    echo "Stage 1/2: deploying Phase 0 + Phase 1 (Foundry project deferred)..."
     az deployment sub create \
       --location "${LOCATION}" \
       --template-file "${TEMPLATE_FILE}" \
-      --parameters "${PARAMS_FILE}"
+      --parameters "${PARAMS_FILE}" \
+      --parameters deploy_foundry_project=false
+
+    echo "Stage 2/2: deploying Foundry project..."
+    project_max_attempts=6
+    project_retry_delay_seconds=10
+    attempt=1
+    while true; do
+      if error_output="$(az deployment sub create \
+        --location "${LOCATION}" \
+        --template-file "${TEMPLATE_FILE}" \
+        --parameters "${PARAMS_FILE}" 2>&1)"; then
+        echo "${error_output}"
+        break
+      fi
+      if [[ "${error_output}" == *"you must enable a managed identity"* && "${attempt}" -lt "${project_max_attempts}" ]]; then
+        echo "Foundry project creation hit the known identity-propagation race (attempt ${attempt}/${project_max_attempts}) — retrying in ${project_retry_delay_seconds}s..." >&2
+        sleep "${project_retry_delay_seconds}"
+        attempt=$((attempt + 1))
+        continue
+      fi
+      echo "${error_output}" >&2
+      exit 1
+    done
     ;;
   down)
     echo "About to DELETE resource group '${RESOURCE_GROUP_NAME}' and everything in it."

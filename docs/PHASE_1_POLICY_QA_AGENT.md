@@ -49,21 +49,34 @@ PII, consistent with the platform's "fictitious company" framing.
 
 ## Provisioning order
 
-See `docs/Local_setup.md` for tooling prerequisites. Order (each step run
-with confirmation — real, billable Azure resources):
+See `docs/Local_setup.md` for tooling prerequisites. Steps 1–3 are now
+codified as Bicep (`docs/INFRA_DEPLOYMENT_PLAN.md` Phase 0/1) — run with
+`infra/deploy.sh up`, which prompts for confirmation before creating any
+real, billable resource. Steps 4–5 stay on `azd` (not an ARM/Bicep
+operation — see the plan's §1).
 
-1. `az login` + resource group
-2. Azure OpenAI resource + a chat model deployment (`AZURE_AI_MODEL_DEPLOYMENT_NAME`)
-   and an embedding model deployment (`AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME`)
-3. Azure AI Search service, then `uv run python -m search.ingest` to create
-   and populate `auto_policy_documents`
-4. `hosted_agent/README.md`'s `azd ai agent init` step, scaffolding the
-   Foundry project
-5. `azd up` — provisions the remaining Foundry infra and deploys the agent.
-   No separate Foundry → Azure AI Search connection resource is needed:
-   `AzureAISearchContextProvider` reaches the index directly via
-   `AZURE_SEARCH_ENDPOINT` + the deployed agent's managed identity.
-6. Smoke test: ask the deployed agent a few in-corpus and out-of-corpus
+1. `az login`, then `infra/deploy.sh up` — provisions the resource group,
+   Key Vault, managed identity (Phase 0), the Foundry account with its chat
+   (`AZURE_AI_MODEL_DEPLOYMENT_NAME`) and embedding
+   (`AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME`) model deployments, the Foundry
+   project, the Azure AI Search service, and the RBAC role assignments
+   wiring the managed identity to all three (Phase 1). Copy the endpoint
+   outputs into `.env`.
+2. `uv run python -m search.ingest` to create and populate
+   `auto_policy_documents` on the Search service `infra/deploy.sh up` just
+   provisioned.
+3. `hosted_agent/README.md`'s `azd ai agent init -p <project-resource-id>`
+   step, targeting the Bicep-provisioned Foundry project from step 1 instead
+   of letting `azd` create its own — **unverified**, confirm the `-p` flag's
+   behavior against this repo's installed `azd`/`microsoft.foundry`
+   extension version before relying on it (`INFRA_DEPLOYMENT_PLAN.md` §6).
+4. `azd up` — provisions the remaining hosted-agent runtime (container
+   registry, App Insights, the agent's own managed identity/compute/
+   endpoint) and deploys the agent. No separate Foundry → Azure AI Search
+   connection resource is needed: `AzureAISearchContextProvider` reaches the
+   index directly via `AZURE_SEARCH_ENDPOINT` + the deployed agent's managed
+   identity.
+5. Smoke test: ask the deployed agent a few in-corpus and out-of-corpus
    questions; confirm grounded, cited answers vs. an explicit "I don't have
    that" for the latter
 

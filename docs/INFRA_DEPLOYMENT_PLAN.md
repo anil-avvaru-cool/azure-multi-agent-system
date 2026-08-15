@@ -247,6 +247,7 @@ infra/
 | `azd`/Bicep boundary is a manual seam, narrowed but not closed by 1.1–1.2 | Before this revision: all of Phase 1's output values had to be manually carried into `hosted_agent/`'s `.env`. Now: only passing the Foundry project's resource ID into `azd ai agent init -p <project-resource-id>` remains manual, plus any Search/OpenAI values not already resolvable from the project's own connections. Acceptable at this scale; revisit if it becomes error-prone. |
 | `-p <project-resource-id>` behavior unverified against this repo's `azd` version | 1.2's design depends on `azd ai agent init` correctly targeting a pre-existing Foundry project instead of creating one. Confirm this against the currently installed `azd`/`microsoft.foundry` extension version as part of implementing 1.2 — the whole point of moving the project to Bicep is defeated if `azd` silently creates a second project anyway. |
 | Merged account (1.1) widens the blast radius of a single resource | Before the merge, "Azure OpenAI" and "Foundry account" would have been two separate resources — deleting/recreating one for any reason wouldn't touch the other. Merged, a change to 1.1 (e.g. a bad model-deployment update) risks the one account that the project (1.2) and Search RBAC (1.4) both depend on. Acceptable at this scale (single dev RG, single agent) — revisit if a second agent's blast-radius needs diverge from `policy_qa_agent`'s. |
+| **Foundry account → project creation race (found live, 2026-08-15)** | First `infra/deploy.sh up` run: `phase1-foundry-account` succeeded, `phase1-foundry-project` failed 1.3s later with `BadRequest: "Unsupported configuration. To create projects, you must enable a managed identity on your resource."` — despite the account's `identity.type: SystemAssigned` and a valid `identity.principalId` being confirmed present via `az cognitiveservices account show` immediately after. Root cause: the Cognitive Services RP propagates the account's identity into its internal project-creation validation path asynchronously, a few seconds *after* the account's ARM PUT already reports `Succeeded` — no documented SLA, no readiness attribute to poll (principalId was already populated when the race still hit, so it isn't a valid readiness signal either). Bicep's `dependsOn` (already present, `main.bicep`) only sequences the two ARM PUT calls; it can't see or wait on that internal RP step. **Fix**: `main.bicep` gained a `deploy_foundry_project` toggle (default `true`) so the project module can be excluded from a deployment; `infra/deploy.sh up` now deploys in two stages — stage 1 with `deploy_foundry_project=false` (account + search + RBAC), then stage 2 retries the full deployment (project included) up to 6 times with a 10s delay, matching only on this specific error text so unrelated failures still fail fast. Retrying the actual operation, not sleeping a guessed duration or polling a proxy attribute, per this repo's root-cause-over-workarounds posture (`CLAUDE.md`). |
 
 ---
 
@@ -273,12 +274,29 @@ infra/
 3. Add Phase 1 (Foundry account + model deployments, Foundry project, Azure
    AI Search, RBAC — 1.1–1.4) and re-point Phase 1's provisioning steps in
    `PHASE_1_POLICY_QA_AGENT.md` at `infra/deploy.sh up` instead of the
-   current manual `az` commands.
+   current manual `az` commands. **Code written 2026-08-15**
+   (`infra/bicep/modules/foundry_account.bicep`, `foundry_project.bicep`,
+   `ai_search.bicep`, `rbac.bicep`, wired into `main.bicep` behind
+   `deploy_phase_1`) and compiles cleanly (`az bicep build` /
+   `build-params` against `params/dev.bicepparam`, only BCP081
+   "type cache" warnings from this box's Bicep CLI version — not errors).
+   `PHASE_1_POLICY_QA_AGENT.md` §Provisioning order updated to point at
+   `infra/deploy.sh up` for steps 1–3. **Not yet run against a live
+   subscription** — validate `infra/deploy.sh up`/`down` end to end before
+   moving on to 1.2's `azd` hand-off (next item) or a real agent smoke test.
+   One live-subscription finding folded into `modules/foundry_account.bicep`
+   already: `az cognitiveservices usage list --location eastus2` against
+   this repo's actual subscription showed `OpenAI.GlobalStandard.gpt-4o` at
+   0 quota (vs. 50 for `OpenAI.Standard.gpt-4o`) — the module defaults both
+   model deployments to the `Standard` SKU, not the `GlobalStandard` several
+   Microsoft samples default to. Re-check quota with the same command before
+   changing region or model.
 4. When implementing 1.2, verify `azd ai agent init -p
    <project-resource-id>` actually targets the Bicep-provisioned project
    against this repo's installed `azd`/`microsoft.foundry` extension version
    before updating `hosted_agent/README.md`'s provisioning step 4 to use it
-   (§6).
+   (§6). **Still outstanding** — blocked on 1.2 having actually run against
+   a live subscription first (previous item).
 5. Phases 2–7 are built only when the agent or feature that needs them is
    actually started — no phase is provisioned ahead of a concrete consumer,
    matching this repo's stated roadmap posture (`Readme.md` §Roadmap).
