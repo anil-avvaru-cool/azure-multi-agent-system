@@ -26,14 +26,36 @@ resources get added as later agents land.
 
 **What this plan does *not* cover, on purpose:**
 
-- **The Foundry hosted-agent scaffold** (`hosted_agent/`) — `azd ai agent
-  init` / `azd up` generate that project's `azure.yaml`, `agent.yaml`, and
-  its own infra-as-code. `hosted_agent/README.md` already states why this is
-  intentionally not hand-authored: matching an `azd`/`microsoft.foundry`
-  extension version by hand risks drift, which is exactly the kind of
-  workaround this platform avoids. This Bicep plan provisions everything
-  *around* that scaffold — resource group, Key Vault, Azure OpenAI, Azure AI
-  Search — and stops at the Foundry project boundary.
+- **The hosted-agent runtime deployment** (`hosted_agent/`'s `azd up` /
+  `azd deploy` step) — packaging `policy_qa_agent` as a container image,
+  pushing to ACR, and Agent Service provisioning compute, a dedicated
+  managed identity, and an endpoint for it. This is not an ARM/Bicep
+  operation: Foundry hosted agents (Agents v2) are not ARM resources, so
+  there is no Bicep resource type for "the agent" itself, and this plan does
+  not attempt to hand-author it. `hosted_agent/README.md` covers this step.
+
+  *(Revised 2026-08-15 — narrower than originally scoped. This plan
+  previously excluded the Foundry hub/project itself too, on the grounds
+  that hand-writing it risked drifting from whatever the installed
+  `azd`/`microsoft.foundry` extension version expected. That's no longer the
+  strongest argument: the GA `Microsoft.CognitiveServices/accounts` API
+  (`allowProjectManagement: true`) with a child `accounts/projects` resource
+  collapsed the old hub+workspace model — hub, project, AI Services, Key
+  Vault, Storage (5 resources) — down to 2, and `azd ai agent init -p
+  <project-resource-id>` accepts an existing project rather than requiring
+  `azd` to create one. So the Foundry account + project moves into this
+  plan's scope as Phase 1.1–1.2 (§4); only the hosted-agent runtime above
+  stays on `azd`, and for a structural reason — it isn't an ARM resource —
+  not a drift-avoidance one.)*
+
+  *(Revised again 2026-08-15 — the standalone "Azure OpenAI resource" that
+  used to be 1.1 is now folded into the Foundry account itself. Under the
+  unified GA model, Azure OpenAI is a capability of
+  `Microsoft.CognitiveServices/accounts`, not a separate resource type —
+  provisioning a second `accounts` resource for "Azure OpenAI" next to the
+  Foundry account would just recreate the pre-GA hub/workspace split this
+  revision was meant to eliminate. One account, one set of chat/embedding
+  deployments, one child project. See 1.1 in the table below.)*
 - Private networking, AKS, ingress, Azure Firewall, APIM, ExpressRoute/VPN —
   all deferred, explicitly, to later phases below. Phase 1's own docs
   (`PHASE_1_POLICY_QA_AGENT.md`) already state private endpoints are
@@ -53,7 +75,9 @@ resources get added as later agents land.
 | **One `up` command, one `down` command** | `infra/deploy.sh up` runs `az deployment group create` against `main.bicep`; `infra/deploy.sh down` runs `az group delete` on the single resource group. Deleting the whole RG is the simplest correct "down" *because* everything lives in one RG (Decision 1) — no per-resource teardown ordering to get wrong. |
 | **Dev-tier SKUs by default, cost tier labeled per phase** | This is a portfolio/demo build, not a live customer — Free/Basic/Serverless SKUs by default. Every phase below is labeled `$`–`$$$$` so a reviewer can see cost before approving a phase, per the request to mark costly resources out as future work. |
 | **Public network access by default; private networking is Phase 4, not silently skipped** | Matches Phase 1's already-documented stance (`PHASE_1_POLICY_QA_AGENT.md` §Explicitly out of scope). Flagging it as a numbered future phase — not an omission — keeps it honest the way the source guide's DEC-023 posture demands before any real customer data touches these resources. |
-| **Bicep takes over Phase 1's manual `az` steps 1–3** (RG, Azure OpenAI, Azure AI Search) — `azd` keeps steps 4–5 (Foundry scaffold + `azd up`) | Codifies what's currently three manual, undocumented-as-code `az` commands in `PHASE_1_POLICY_QA_AGENT.md` §Provisioning order, without touching the part of the flow that has a stated reason to stay generated. |
+| **Bicep takes over Phase 1's manual `az`/`azd` steps 1–4** (RG, Azure OpenAI, Azure AI Search, Foundry account+project) — `azd` keeps only step 5 (hosted-agent build/push/deploy) | Codifies what's currently four manual, undocumented-as-code provisioning steps in `PHASE_1_POLICY_QA_AGENT.md` §Provisioning order. Narrower hand-off to `azd` than originally planned — see §1's 2026-08-15 revision — since only the hosted-agent runtime itself has a structural reason (not an ARM resource) to stay generated. |
+| **Foundry account + project provisioned by Bicep, `azd` targets it via `-p`** | GA API versions (`2025-06-01`+) collapsed the hub/project resource model from 5 resources to 2, removing the version-drift risk that originally justified deferring the whole Foundry boundary to `azd` (§1). `azd ai agent init -p <project-resource-id>` accepts an existing project, so `azd` provisions the hosted-agent runtime against Bicep-owned infra instead of creating its own project — narrows the manual seam in §6 to just that one hand-off. |
+| **Azure OpenAI merges into the Foundry account (1.1)** | Under the GA unified model, Azure OpenAI is a capability of `Microsoft.CognitiveServices/accounts`, not its own resource type — a separate "Azure OpenAI resource" next to the Foundry account would just re-split what the unified model merged. One account (chat + embedding deployments) with a child project, instead of two sibling accounts. User-confirmed 2026-08-15 (previously left open in §6). |
 | **Naming: underscores where Azure allows, hyphens where it doesn't** | Per repo standard (`CLAUDE.md`) and the source guide's own Phase 0.1 note — Azure forces hyphens/lowercase on some resource types (Storage, AKS, Key Vault, PostgreSQL Flexible Server). Document each exception at the module, don't fight the platform. |
 
 ---
@@ -64,7 +88,7 @@ resources get added as later agents land.
 |---|---|
 | Name | `rg-redwood-azure-dev` |
 | Region | Single region to start (no multi-region — not needed at this scale); pick the region with Azure AI Foundry + Azure AI Search + Azure OpenAI model availability |
-| Tags | `project=redwood-ai-insurance`, `component=azure-multi-agent-system`, `environment=dev`, `managed-by=bicep` (except the Foundry sub-resources, tagged `managed-by=azd`) |
+| Tags | `project=redwood-ai-insurance`, `component=azure-multi-agent-system`, `environment=dev`, `managed-by=bicep` (except the hosted-agent runtime's resources — ACR, App Insights, the agent's own managed identity/compute/endpoint — created by `azd` and tagged `managed-by=azd`; the Foundry account (with its model deployments) and project themselves are `managed-by=bicep` as of 1.1/1.2) |
 
 ---
 
@@ -84,18 +108,26 @@ explicit customer/engagement decision (Firewall, APIM, ExpressRoute).
 | 0.2 | Azure Key Vault (public access for now, per §2) | Secret store for API keys/connection strings — nothing hardcoded, per repo standard | $ | 0.1 |
 | 0.3 | User-assigned managed identity | Least-privilege auth from the Foundry hosted agent and any future AKS workload to Key Vault/Search/OpenAI, no shared credentials | $ | 0.1 |
 
-### Phase 1 — AI Services Core *(Core — replaces Phase 1's manual `az` steps 1–3)*
+### Phase 1 — AI Services Core *(Core — replaces Phase 1's manual `az`/`azd` steps 1–4)*
 
 | # | Resource | Purpose | Cost | Depends on |
 |---|---|---|---|---|
-| 1.1 | Azure OpenAI resource + chat + embedding model deployments | LLM inference + `search/ingest.py` embeddings — currently a manual step in `PHASE_1_POLICY_QA_AGENT.md` | $$ | 0.1, 0.2 |
-| 1.2 | Azure AI Search service (Free or Basic tier) | `auto_policy_documents` index host — currently a manual step | $ (Free tier) | 0.1, 1.1 |
-| 1.3 | RBAC role assignments (Search → managed identity, Key Vault → managed identity) | Entra ID auth throughout, no API keys, matching `example.env`'s stated posture | $ | 0.2, 0.3, 1.2 |
+| 1.1 | Foundry account (`Microsoft.CognitiveServices/accounts`, kind `AIServices`, `allowProjectManagement: true`) + chat + embedding model deployments | Unified AI Services/Azure OpenAI resource — LLM inference + `search/ingest.py` embeddings, currently a manual step in `PHASE_1_POLICY_QA_AGENT.md`. Replaces what was a standalone "Azure OpenAI resource" — merged in per §2, since Azure OpenAI is a capability of this resource type under the GA model, not a sibling resource. | $$ | 0.1, 0.2 |
+| 1.2 | Foundry project (child `accounts/projects` resource) | Provisioned ahead of time so `azd ai agent init -p <project-resource-id>` targets it instead of creating its own — closes the drift gap that originally kept the whole Foundry boundary on `azd` (§1) | $ (consumption-based, no idle charge) | 1.1, 0.3 |
+| 1.3 | Azure AI Search service (Free or Basic tier) | `auto_policy_documents` index host — currently a manual step | $ (Free tier) | 0.1, 1.1 |
+| 1.4 | RBAC role assignments (Search → managed identity, Key Vault → managed identity, Foundry account → managed identity for `Cognitive Services OpenAI User`) | Entra ID auth throughout, no API keys, matching `example.env`'s stated posture | $ | 0.2, 0.3, 1.1, 1.3 |
 
-**Boundary with `azd`:** Phase 1 output (Search endpoint, OpenAI endpoint)
-feeds `.env` values that `hosted_agent/`'s `azd ai agent init` /
-`azd up` consume when scaffolding the Foundry project — this plan provisions
-up to here and stops; the Foundry hub/project itself stays on `azd` per §1.
+**Boundary with `azd`:** Phase 1 output — Search endpoint, the Foundry
+account's OpenAI-compatible endpoint, and the Foundry project resource ID
+from 1.2 — feeds `hosted_agent/`'s `azd ai agent init -p
+<project-resource-id>` / `azd up`. This plan provisions the account and
+project themselves; `azd` does only what it structurally must — build/push
+the container image and let Agent Service provision the hosted-agent
+runtime (compute, dedicated identity, endpoint), none of which is an ARM
+resource. See §1 for why this boundary narrowed from "Foundry project" to
+"hosted-agent runtime only." **Not yet verified end-to-end** against this
+repo's installed `azd`/`microsoft.foundry` extension version — confirm the
+`-p` flag's behavior when implementing 1.2, before relying on it (§6).
 
 ### Phase 2 — Data & State Layer *(Medium priority — needed once a second agent lands)*
 
@@ -169,8 +201,9 @@ infra/
 │   ├── modules/
 │   │   ├── key_vault.bicep
 │   │   ├── managed_identity.bicep
-│   │   ├── openai.bicep
-│   │   ├── ai_search.bicep
+│   │   ├── foundry_account.bicep # Phase 1.1 — account + model deployments
+│   │   ├── foundry_project.bicep # Phase 1.2 — child project resource
+│   │   ├── ai_search.bicep       # Phase 1.3
 │   │   ├── postgresql.bicep      # Phase 2+
 │   │   ├── cosmos_db.bicep       # Phase 2+
 │   │   ├── redis.bicep           # Phase 2+
@@ -205,13 +238,15 @@ infra/
 | Microsoft Agent Framework / Foundry Agent Service has no Redwood production track record | Unaffected by this plan — it's Foundry-internal, outside the Bicep boundary (§1) |
 | Azure AI Search / feature-store-spine composition is undesigned in code (source guide §3) | Phase 2's Redis (2.3) provisions the resource only; the composition code itself is a separate, unshipped dependency, same caveat as the source guide |
 | Private networking deferred to Phase 4 | Do not point Phase 0–3 resources at real/customer-like data until Phase 4 is built — same gate `PHASE_1_POLICY_QA_AGENT.md` already states |
-| `azd`/Bicep boundary is a manual seam | Phase 1 output values must be manually carried into `hosted_agent/`'s `.env` today; no automated hand-off between `infra/deploy.sh up` and `azd ai agent init` exists yet — acceptable at this scale, revisit if it becomes error-prone |
+| `azd`/Bicep boundary is a manual seam, narrowed but not closed by 1.1–1.2 | Before this revision: all of Phase 1's output values had to be manually carried into `hosted_agent/`'s `.env`. Now: only passing the Foundry project's resource ID into `azd ai agent init -p <project-resource-id>` remains manual, plus any Search/OpenAI values not already resolvable from the project's own connections. Acceptable at this scale; revisit if it becomes error-prone. |
+| `-p <project-resource-id>` behavior unverified against this repo's `azd` version | 1.2's design depends on `azd ai agent init` correctly targeting a pre-existing Foundry project instead of creating one. Confirm this against the currently installed `azd`/`microsoft.foundry` extension version as part of implementing 1.2 — the whole point of moving the project to Bicep is defeated if `azd` silently creates a second project anyway. |
+| Merged account (1.1) widens the blast radius of a single resource | Before the merge, "Azure OpenAI" and "Foundry account" would have been two separate resources — deleting/recreating one for any reason wouldn't touch the other. Merged, a change to 1.1 (e.g. a bad model-deployment update) risks the one account that the project (1.2) and Search RBAC (1.4) both depend on. Acceptable at this scale (single dev RG, single agent) — revisit if a second agent's blast-radius needs diverge from `policy_qa_agent`'s. |
 
 ---
 
 ## 7. Explicitly Out of Scope
 
-- Foundry hub/project/agent resources (owned by `azd`, §1)
+- Hosted-agent runtime deployment (container build/push + Agent Service compute/identity/endpoint provisioning — owned by `azd`, §1). The Foundry account (merged with what was a standalone Azure OpenAI resource) and project themselves are now in scope — see Phase 1.1–1.2 (§4).
 - Entra ID app registrations (manual/Graph prerequisite, not a Bicep module)
 - Life/Health Azure AI Search indices (no second LOB corpus exists yet, per source guide §7)
 - Regulated/Restricted variant (Phase 7.3, gated behind an actual engagement decision)
@@ -224,9 +259,15 @@ infra/
 2. On approval, implement **Phase 0 only** — resource group, Key Vault,
    managed identity — and validate `infra/deploy.sh up` / `down` end to end
    before writing a single module beyond it.
-3. Add Phase 1 (Azure OpenAI + Azure AI Search) and re-point Phase 1's
-   provisioning steps in `PHASE_1_POLICY_QA_AGENT.md` at
-   `infra/deploy.sh up` instead of the current manual `az` commands.
-4. Phases 2–7 are built only when the agent or feature that needs them is
+3. Add Phase 1 (Foundry account + model deployments, Foundry project, Azure
+   AI Search, RBAC — 1.1–1.4) and re-point Phase 1's provisioning steps in
+   `PHASE_1_POLICY_QA_AGENT.md` at `infra/deploy.sh up` instead of the
+   current manual `az` commands.
+4. When implementing 1.2, verify `azd ai agent init -p
+   <project-resource-id>` actually targets the Bicep-provisioned project
+   against this repo's installed `azd`/`microsoft.foundry` extension version
+   before updating `hosted_agent/README.md`'s provisioning step 4 to use it
+   (§6).
+5. Phases 2–7 are built only when the agent or feature that needs them is
    actually started — no phase is provisioned ahead of a concrete consumer,
    matching this repo's stated roadmap posture (`Readme.md` §Roadmap).
