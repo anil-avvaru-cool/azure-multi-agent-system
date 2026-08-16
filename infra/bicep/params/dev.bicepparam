@@ -1,13 +1,21 @@
 using '../main.bicep'
 
 param environment_name = 'dev'
-param location = 'eastus2'
+//param location = 'eastus2'
+//param location = 'northcentralus'
+param location = 'westus3'
 param resource_group_name = 'rg-redwood-azure-dev'
 
 // Key Vault names are globally unique across all of Azure (DNS-scoped
 // namespace, not just this subscription/tenant). If deployment fails with
 // a "vault name already taken" error, change this value.
-param key_vault_name = 'kv-redwood-azure-dev'
+//param key_vault_name = 'kv-redwood-azure-dev'
+
+// Define the base name
+param base_key_vault_name = 'kv-redwood-azure-dev'
+
+// Generate the unique name using the sys namespace
+param key_vault_name = '${base_key_vault_name}-${sys.uniqueString(base_key_vault_name)}'
 
 param managed_identity_name = 'id_redwood_azure_dev'
 
@@ -16,7 +24,8 @@ param deploy_phase_0 = true
 // Foundry account name is also a global DNS-scoped namespace
 // (customSubDomainName resolves under *.services.ai.azure.com /
 // *.openai.azure.com) — change if deployment fails with "already taken".
-param foundry_account_name = 'aif-redwood-azure-dev'
+param base_foundry_account_name = 'aif-redwood-azure-dev'
+param foundry_account_name = '${base_foundry_account_name}-${sys.uniqueString(base_foundry_account_name)}'
 
 // Must match AZURE_AI_MODEL_DEPLOYMENT_NAME / AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME
 // in .env once Phase 1 replaces the manual provisioning steps in
@@ -26,7 +35,8 @@ param chat_model_name = 'gpt-4o'
 param chat_model_version = ''
 
 param embedding_model_deployment_name = 'text-embedding-3-small'
-param embedding_model_name = 'text-embedding-3-small'
+//param embedding_model_name = 'text-embedding-3-small'
+param embedding_model_name = 'text-embedding-ada-002'
 param embedding_model_version = ''
 
 param foundry_project_name = 'policy_qa_project'

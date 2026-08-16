@@ -57,6 +57,7 @@ case "$1" in
     # See docs/INFRA_DEPLOYMENT_PLAN.md §6.
     echo "Stage 1/2: deploying Phase 0 + Phase 1 (Foundry project deferred)..."
     az deployment sub create \
+      --name "sub-deploy-$(date +%s)" \
       --location "${LOCATION}" \
       --template-file "${TEMPLATE_FILE}" \
       --parameters "${PARAMS_FILE}" \
@@ -68,6 +69,7 @@ case "$1" in
     attempt=1
     while true; do
       if error_output="$(az deployment sub create \
+        --name "sub-deploy-$(date +%s)" \
         --location "${LOCATION}" \
         --template-file "${TEMPLATE_FILE}" \
         --parameters "${PARAMS_FILE}" 2>&1)"; then

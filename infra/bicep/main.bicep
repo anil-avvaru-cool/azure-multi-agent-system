@@ -23,6 +23,9 @@ param resource_group_name string
 @description('Key Vault name (Phase 0.2). Globally unique across Azure — see modules/key_vault.bicep.')
 param key_vault_name string
 
+@description('Base Key Vault name (Phase 0.2). Globally unique across Azure — see modules/key_vault.bicep.')
+param base_key_vault_name string
+
 @description('User-assigned managed identity name (Phase 0.3).')
 param managed_identity_name string
 
@@ -31,6 +34,9 @@ param deploy_phase_0 bool = true
 
 @description('Foundry/AI Services account name (Phase 1.1). Microsoft.CognitiveServices/accounts only allows alphanumerics and hyphens — see modules/foundry_account.bicep.')
 param foundry_account_name string
+
+@description('Base Foundry/AI Services account name (Phase 1.1). Microsoft.CognitiveServices/accounts only allows alphanumerics and hyphens — see modules/foundry_account.bicep.')
+param base_foundry_account_name string
 
 @description('Chat model deployment name (Phase 1.1) — must match AZURE_AI_MODEL_DEPLOYMENT_NAME.')
 param chat_model_deployment_name string
