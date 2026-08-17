@@ -12,20 +12,16 @@ param resource_group_name = 'rg-redwood-azure-dev'
 //param key_vault_name = 'kv-redwood-azure-dev'
 
 // Define the base name
-param base_key_vault_name = 'kv-redwood-azure-dev'
+param base_key_vault_name = 'kv-rw-d'
 
-// Generate the unique name using the sys namespace
-param key_vault_name = '${base_key_vault_name}-${sys.uniqueString(base_key_vault_name)}'
-
-param managed_identity_name = 'id_redwood_azure_dev'
+param managed_identity_name = 'id-rw-d'
 
 param deploy_phase_0 = true
 
 // Foundry account name is also a global DNS-scoped namespace
 // (customSubDomainName resolves under *.services.ai.azure.com /
 // *.openai.azure.com) — change if deployment fails with "already taken".
-param base_foundry_account_name = 'aif-redwood-azure-dev'
-param foundry_account_name = '${base_foundry_account_name}-${sys.uniqueString(base_foundry_account_name)}'
+param base_foundry_account_name = 'aif-rw-d'
 
 // Must match AZURE_AI_MODEL_DEPLOYMENT_NAME / AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME
 // in .env once Phase 1 replaces the manual provisioning steps in

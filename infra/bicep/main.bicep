@@ -20,9 +20,6 @@ param location string
 @description('Resource group name — single RG for the whole dev environment, per docs/INFRA_DEPLOYMENT_PLAN.md §2/§3.')
 param resource_group_name string
 
-@description('Key Vault name (Phase 0.2). Globally unique across Azure — see modules/key_vault.bicep.')
-param key_vault_name string
-
 @description('Base Key Vault name (Phase 0.2). Globally unique across Azure — see modules/key_vault.bicep.')
 param base_key_vault_name string
 
@@ -31,9 +28,6 @@ param managed_identity_name string
 
 @description('Toggle for Phase 0 (resource group tags + Key Vault + managed identity). The resource group itself is always created, since every later phase depends on it too.')
 param deploy_phase_0 bool = true
-
-@description('Foundry/AI Services account name (Phase 1.1). Microsoft.CognitiveServices/accounts only allows alphanumerics and hyphens — see modules/foundry_account.bicep.')
-param foundry_account_name string
 
 @description('Base Foundry/AI Services account name (Phase 1.1). Microsoft.CognitiveServices/accounts only allows alphanumerics and hyphens — see modules/foundry_account.bicep.')
 param base_foundry_account_name string
@@ -71,6 +65,8 @@ param deploy_phase_1 bool = true
 @description('Toggle for the Foundry project module specifically (Phase 1.2), separate from deploy_phase_1. The Cognitive Services RP takes a few seconds to internally propagate the account\'s system-assigned identity after account creation returns Succeeded — creating the project in the same deployment as the account can race that propagation and fail with "you must enable a managed identity on your resource" even though the identity is present (verified live: docs/INFRA_DEPLOYMENT_PLAN.md §6). infra/deploy.sh deploys the account first with this set to false, then retries the project deployment separately. Leave true for a single-shot deploy where the account already exists from a prior run.')
 param deploy_foundry_project bool = true
 
+param deploymentTime string = utcNow('yyyyMMddHHmmss') 
+
 var tags = {
   project: 'redwood-ai-insurance'
   component: 'azure-multi-agent-system'
@@ -84,6 +80,8 @@ resource resource_group 'Microsoft.Resources/resourceGroups@2024-11-01' = {
   tags: tags
 }
 
+var rawKvName =take('${base_key_vault_name}-${deploymentTime}-${uniqueString(resource_group.id)}', 24)
+var key_vault_name = endsWith(rawKvName, '-') ? substring(rawKvName, 0, length(rawKvName) - 1) : rawKvName
 module key_vault 'modules/key_vault.bicep' = if (deploy_phase_0) {
   name: 'phase0-key-vault'
   scope: resource_group
@@ -104,6 +102,8 @@ module managed_identity 'modules/managed_identity.bicep' = if (deploy_phase_0) {
   }
 }
 
+var rawFoundryAccName = take('${base_foundry_account_name}-${deploymentTime}-${uniqueString(resource_group.id)}', 24)
+var foundry_account_name = endsWith(rawFoundryAccName, '-') ? substring(rawFoundryAccName, 0, length(rawFoundryAccName) - 1) : rawFoundryAccName
 // Phase 1 depends on Phase 0's Key Vault + managed identity (docs/INFRA_DEPLOYMENT_PLAN.md
 // §4's Phase 1 "Depends on" column) — guard on both toggles, not just deploy_phase_1,
 // so enabling Phase 1 without Phase 0 fails at param-validation time instead of
@@ -130,7 +130,7 @@ module foundry_project 'modules/foundry_project.bicep' = if (deploy_phase_1_reso
   name: 'phase1-foundry-project'
   scope: resource_group
   params: {
-    foundry_account_name: foundry_account_name
+    foundry_account_name: take('${base_foundry_account_name}-${deploymentTime}-${uniqueString(resource_group.id)}', 24)
     foundry_project_name: foundry_project_name
     location: location
     tags: tags

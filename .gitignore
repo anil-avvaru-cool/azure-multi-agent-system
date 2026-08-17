@@ -39,6 +39,9 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# infra/deploy.sh --debug output (can contain auth tokens/headers)
+infra/logs/
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
