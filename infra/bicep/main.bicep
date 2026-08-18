@@ -80,8 +80,7 @@ resource resource_group 'Microsoft.Resources/resourceGroups@2024-11-01' = {
   tags: tags
 }
 
-var rawKvName =take('${base_key_vault_name}-${deploymentTime}-${uniqueString(resource_group.id)}', 24)
-var key_vault_name = endsWith(rawKvName, '-') ? substring(rawKvName, 0, length(rawKvName) - 1) : rawKvName
+var key_vault_name = base_key_vault_name
 module key_vault 'modules/key_vault.bicep' = if (deploy_phase_0) {
   name: 'phase0-key-vault'
   scope: resource_group
@@ -102,8 +101,7 @@ module managed_identity 'modules/managed_identity.bicep' = if (deploy_phase_0) {
   }
 }
 
-var rawFoundryAccName = take('${base_foundry_account_name}-${deploymentTime}-${uniqueString(resource_group.id)}', 24)
-var foundry_account_name = endsWith(rawFoundryAccName, '-') ? substring(rawFoundryAccName, 0, length(rawFoundryAccName) - 1) : rawFoundryAccName
+var foundry_account_name = base_foundry_account_name
 // Phase 1 depends on Phase 0's Key Vault + managed identity (docs/INFRA_DEPLOYMENT_PLAN.md
 // §4's Phase 1 "Depends on" column) — guard on both toggles, not just deploy_phase_1,
 // so enabling Phase 1 without Phase 0 fails at param-validation time instead of
