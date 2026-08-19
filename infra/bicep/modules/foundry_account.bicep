@@ -54,7 +54,7 @@ resource foundry_account 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
     customSubDomainName: foundry_account_name
     // No API keys anywhere in this repo's config (example.env's stated
     // posture) — Entra ID / managed identity only, enforced at the resource.
-    disableLocalAuth: true
+    // disableLocalAuth: true
     publicNetworkAccess: 'Enabled'
   }
 }

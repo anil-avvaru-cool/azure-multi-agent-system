@@ -21,17 +21,19 @@ param deploy_phase_0 = true
 // Foundry account name is also a global DNS-scoped namespace
 // (customSubDomainName resolves under *.services.ai.azure.com /
 // *.openai.azure.com) — change if deployment fails with "already taken".
-param base_foundry_account_name = 'aif-rw-d'
+param base_foundry_account_name = 'aif-rw-d21'
 
 // Must match AZURE_AI_MODEL_DEPLOYMENT_NAME / AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME
 // in .env once Phase 1 replaces the manual provisioning steps in
 // docs/PHASE_1_POLICY_QA_AGENT.md (see docs/INFRA_DEPLOYMENT_PLAN.md §4 Next Steps).
-param chat_model_deployment_name = 'gpt-4o'
-param chat_model_name = 'gpt-4o'
-param chat_model_version = ''
 
-param embedding_model_deployment_name = 'text-embedding-3-small'
+param chat_model_name = 'gpt-4.1-mini'
+param chat_model_deployment_name = 'gpt-4.1-mini'
+param chat_model_version = '2025-04-14' // Standard baseline for the 4.1 mini series
+
+
 //param embedding_model_name = 'text-embedding-3-small'
+param embedding_model_deployment_name = 'text-embedding-ada-002'
 param embedding_model_name = 'text-embedding-ada-002'
 param embedding_model_version = ''
 
@@ -39,7 +41,7 @@ param foundry_project_name = 'policy_qa_project'
 
 // Search service name is also a global DNS-scoped namespace
 // (*.search.windows.net) — change if deployment fails with "already taken".
-param search_service_name = 'srch-rd-az-d21'
+param search_service_name = 'srch-rd-az-d22'
 
 // Free tier is one per subscription per region — if this subscription
 // already has one, change to 'basic' here (see modules/ai_search.bicep).

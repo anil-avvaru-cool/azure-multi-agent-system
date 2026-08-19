@@ -128,7 +128,7 @@ module foundry_project 'modules/foundry_project.bicep' = if (deploy_phase_1_reso
   name: 'phase1-foundry-project'
   scope: resource_group
   params: {
-    foundry_account_name: take('${base_foundry_account_name}-${deploymentTime}-${uniqueString(resource_group.id)}', 24)
+    foundry_account_name: foundry_account_name
     foundry_project_name: foundry_project_name
     location: location
     tags: tags
