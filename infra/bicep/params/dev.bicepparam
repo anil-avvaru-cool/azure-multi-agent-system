@@ -39,10 +39,10 @@ param foundry_project_name = 'policy_qa_project'
 
 // Search service name is also a global DNS-scoped namespace
 // (*.search.windows.net) — change if deployment fails with "already taken".
-param search_service_name = 'srch-redwood-azure-dev'
+param search_service_name = 'srch-rd-az-d21'
 
 // Free tier is one per subscription per region — if this subscription
 // already has one, change to 'basic' here (see modules/ai_search.bicep).
-param search_sku_name = 'free'
+param search_sku_name = 'basic'
 
 param deploy_phase_1 = true

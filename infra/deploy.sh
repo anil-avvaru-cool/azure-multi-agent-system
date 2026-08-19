@@ -14,6 +14,13 @@
 # the Foundry hosted-agent runtime's resources, which are `azd`-managed and
 # have their own lifecycle (`azd down`) — see hosted_agent/README.md.
 #
+# Stage 2 (Foundry project creation) makes a single attempt. It does not
+# auto-retry the known identity-propagation race (see docs/
+# INFRA_DEPLOYMENT_PLAN.md §6) — re-run `infra/deploy.sh up` manually if it
+# hits that error, rather than looping automatically and risking Azure
+# Resource Manager rate limiting from repeated `az deployment sub create`
+# calls.
+#
 # Both are real, billable, and — for `down` — destructive Azure operations.
 # Both run unattended (no interactive confirmation) — invoke with care.
 
@@ -70,30 +77,22 @@ case "$1" in
     echo "Stage 1 succeeded."
 
     echo "Stage 2/2: deploying Foundry project..."
-    project_max_attempts=2
-    project_retry_delay_seconds=10
-    attempt=1
-    while true; do
-      if error_output="$(az deployment sub create \
-        --name "sub-deploy-$(date +%s)" \
-        --location "${LOCATION}" \
-        --template-file "${TEMPLATE_FILE}" \
-        --parameters "${PARAMS_FILE}" \
-        --debug 2>&1)"; then
-        echo "${error_output}" >>"${LOG_FILE}"
-        echo "Stage 2 succeeded."
-        break
-      fi
+    if error_output="$(az deployment sub create \
+      --name "sub-deploy-$(date +%s)" \
+      --location "${LOCATION}" \
+      --template-file "${TEMPLATE_FILE}" \
+      --parameters "${PARAMS_FILE}" \
+      --debug 2>&1)"; then
       echo "${error_output}" >>"${LOG_FILE}"
-      if [[ "${error_output}" == *"you must enable a managed identity"* && "${attempt}" -lt "${project_max_attempts}" ]]; then
-        echo "Foundry project creation hit the known identity-propagation race (attempt ${attempt}/${project_max_attempts}) — retrying in ${project_retry_delay_seconds}s..." >&2
-        sleep "${project_retry_delay_seconds}"
-        attempt=$((attempt + 1))
-        continue
+      echo "Stage 2 succeeded."
+    else
+      echo "${error_output}" >>"${LOG_FILE}"
+      if [[ "${error_output}" == *"you must enable a managed identity"* ]]; then
+        echo "Foundry project creation hit the known identity-propagation race (see docs/INFRA_DEPLOYMENT_PLAN.md §6) — re-run '$0 up' manually." >&2
       fi
       echo "Stage 2 failed — see ${LOG_FILE}" >&2
       exit 1
-    done
+    fi
     ;;
   down)
     echo "Deleting resource group '${RESOURCE_GROUP_NAME}' and everything in it."
